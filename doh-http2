@@ -1,0 +1,90 @@
+#!/usr/bin/python3
+
+from scapy.all import DNS, DNSQR, IP, sr1, UDP, DNSRROPT,EDNS0TLV
+import dns.message
+import dns.query
+import base64
+import os
+import argparse
+import time
+import sys
+import textwrap
+
+RR = ["A", "AAAA", "CNAME", "MX", "TXT"]
+parser = argparse.ArgumentParser("doh-http2", description="Perform DNS queries over HTTP with a default GET request.",epilog=textwrap.dedent('''\
+        Example:
+        doh-query test.com A --dns 10.10.10.10 --nocert --edns --padding
+        doh-query example.com A --dns [2403:8600:80cf:e10c:3920::36] --nocert --edns
+
+        '''),formatter_class=argparse.RawTextHelpFormatter)
+parser.add_argument("domain", help="The Domain Name System to resolve.")
+parser.add_argument("rr", help="Supported DNS Resourse Records", metavar="{0}".format(",".join(RR)), default="A", nargs="?")
+parser.add_argument("--dns", help="Enter the DoH Server IP or Hostname. If you are using ipv6 then use proper format []. For example - [ipv6]. Default server is dns.google", default="dns.google")
+parser.add_argument("--edns", action='store_true',help="If you need to enable EDNS")
+parser.add_argument("--padding", action='store_true',help="Pad with EDNS(0)")
+parser.add_argument("--cert", help="Enter the absolute path of the certificate")
+parser.add_argument("--post", action='store_true',help="For post request")
+parser.add_argument("--nocert", action='store_true',help="No certificate varification request")
+parser.add_argument("--timeout", help="Maximum time in seconds that you allow the whole operation to take. Default is 60 secs.", default="60")
+
+args = parser.parse_args()
+
+ip = args.dns
+query = args.domain
+rr = args.rr
+
+endpoint="https://"+ip+"/dns-query"
+
+if "." in args.rr:
+    args.domain, args.rr = args.rr, args.domain
+    args.rr = args.rr.upper()
+if args.rr not in RR:
+    parser.print_usage()
+    sys.exit(1)
+
+if args.edns == True and args.padding == False:
+    pkt = DNS(rd=1, opcode='QUERY', qdcount=1,qd=DNSQR(qname=query, qtype=rr),ar=DNSRROPT(rrname='.', type='OPT', rclass=4096, extrcode=0, version=0, z=0))
+elif args.padding == True:
+    pkt = DNS(rd=1, opcode='QUERY', qdcount=1,qd=DNSQR(qname=query, qtype=rr),ar=DNSRROPT(rrname='.', type='OPT', rclass=4096, extrcode=0, version=0, z=0, rdata=EDNS0TLV(optcode=12, optdata='\x11\x12\x13\x14\x15\x16\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x11\x12\x13\x14\x15\x16\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15\x16\x17\x18\x19\x11\x12\x13\x14\x15') ) )
+else:
+    pkt = DNS(rd=1, opcode='QUERY', qdcount=1, qd=DNSQR(qname=query,qtype=rr))
+
+dns_req_bytes = base64.urlsafe_b64encode(bytes(pkt))
+
+if args.post == True:
+    dns_req = dns_req_bytes.decode("UTF8")
+    if args.nocert == True:
+        query = "echo -n '"+dns_req+"' | base64 -d | curl -H 'content-type: application/dns-message' --data-binary @- "+endpoint+" -o - -s -k1 --max-time "+args.timeout+" > doh_http2.txt"
+    elif args.cert:
+        query = "echo -n '"+dns_req+"' | base64 -d | curl -H 'content-type: application/dns-message' --data-binary @- "+endpoint+" --cacert "+args.cert+" -o - -s --max-time "+args.timeout+" > doh_http2.txt"
+    else:
+        print("\nUse --cert or --nocert parameter...!!!\n")
+        parser.print_usage()
+        sys.exit(1)
+else:
+    dns_req = dns_req_bytes.decode("UTF8").rstrip('=')
+    if args.nocert == True:
+        query = "curl -H 'content-type: application/dns-message' "+endpoint+"?dns="+dns_req+" -o - -s -k1 --max-time "+args.timeout+" > doh_http2.txt"
+    elif args.cert:
+        query = "curl -H 'content-type: application/dns-message' "+endpoint+"?dns="+dns_req+" --cacert "+args.cert+" -o - -s --max-time "+args.timeout+" > doh_http2.txt"
+    else:
+        print("\nUse --cert or --nocert parameter...!!!\n")
+        parser.print_usage()
+        sys.exit(1)
+
+	    
+try:
+    pre_time = float('{0:.10f}'.format(time.time()))
+    op = os.popen(query)
+    h = op.read()
+    fi = open("doh_http2.txt", "rb").read()
+    pos_time = float('{0:.10f}'.format(time.time()))
+    print(DNS(fi).show())
+    print("\nResponse packet Length: "+ str(len(fi))+" Bytes")
+    if len(fi)==0:
+        print("\nTotal Time Taken: 0 ms\n")
+    else:
+        print("\nTotal Time Taken: " + str('{0:.2f}'.format((pos_time-pre_time)*1000.0)) + " ms\n")
+except:
+    print("\nUnable to execute DoH query on "+ args.dns+" server...!! Check the DuT\n")
+    sys.exit(1)
