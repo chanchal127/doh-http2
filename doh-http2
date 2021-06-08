@@ -11,7 +11,7 @@ import sys
 import textwrap
 
 RR = ["A", "AAAA", "CNAME", "MX", "TXT"]
-parser = argparse.ArgumentParser("doh-http2", description="Perform DNS queries over HTTP with a default GET request.",epilog=textwrap.dedent('''\
+parser = argparse.ArgumentParser("doh-query", description="Perform DNS queries over HTTP with a default GET request.",epilog=textwrap.dedent('''\
         Example:
         doh-query test.com A --dns 10.10.10.10 --nocert --edns --padding
         doh-query example.com A --dns [2403:8600:80cf:e10c:3920::36] --nocert --edns
@@ -79,12 +79,15 @@ try:
     h = op.read()
     fi = open("doh_http2.txt", "rb").read()
     pos_time = float('{0:.10f}'.format(time.time()))
-    print(DNS(fi).show())
-    print("\nResponse packet Length: "+ str(len(fi))+" Bytes")
-    if len(fi)==0:
-        print("\nTotal Time Taken: 0 ms\n")
+    if "DNS Qry" in DNS(fi).summary():
+        sys.exit(1)
     else:
-        print("\nTotal Time Taken: " + str('{0:.2f}'.format((pos_time-pre_time)*1000.0)) + " ms\n")
+        print(DNS(fi).show())
+        print("\nResponse packet Length: "+ str(len(fi))+" Bytes")
+        if len(fi)==0:
+            print("\nTotal Time Taken: 0 ms\n")
+        else:
+            print("\nTotal Time Taken: " + str('{0:.2f}'.format((pos_time-pre_time)*1000.0)) + " ms\n")
 except:
-    print("\nUnable to execute DoH query on "+ args.dns+" server...!! Check the DuT\n")
+    print("\nUnable to execute DoH query on "+ args.dns+" server. Check the DuT server..!\n")
     sys.exit(1)
