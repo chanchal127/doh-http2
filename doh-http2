@@ -11,10 +11,10 @@ import sys
 import textwrap
 
 RR = ["A", "AAAA", "CNAME", "MX", "TXT"]
-parser = argparse.ArgumentParser("doh-query", description="Perform DNS queries over HTTP with a default GET request.",epilog=textwrap.dedent('''\
+parser = argparse.ArgumentParser("doh-http2", description="Perform DNS queries over HTTP with a default GET request.",epilog=textwrap.dedent('''\
         Example:
-        doh-query test.com A --dns 10.10.10.10 --nocert --edns --padding
-        doh-query example.com A --dns [2403:8600:80cf:e10c:3920::36] --nocert --edns
+        doh-http2 test.com A --dns 10.10.10.10 --nocert --edns --padding
+        doh-http2 example.com A --dns [2403:8600:80cf:e10c:3920::36] --nocert --edns
 
         '''),formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("domain", help="The Domain Name System to resolve.")
